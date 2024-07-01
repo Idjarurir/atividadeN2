@@ -12,7 +12,12 @@ app.use(bodyparser.json());
 
 var conString = config.urlConnection;
 
-var client = new Client(conString);
+var client = new Client({
+  connectionString: conString,
+  ssl: {
+    rejectUnauthorized: false
+  }
+});
 
 client.connect((err) => {
   if (err) {
@@ -31,96 +36,21 @@ app.get("/", (req, res) => {
   res.send("Ok – Servidor disponível.");
 });
 
-app.get("/usuarios", (req, res) => {
-  try {
-    client.query("SELECT * FROM Usuarios", function (err, result) {
-      if (err) {
-        return console.error("Erro ao executar a qry de SELECT", err);
-      }
-      res.send(result.rows);
-      console.log("Rota: get usuarios");
-    });
-  } catch (error) {
-    console.log(error);
-  }
-});
-
 app.get("/usuarios/:email", (req, res) => {
-  try {
-    console.log("Rota: usuarios/" + req.params.email);
-    client.query(
-      "SELECT * FROM Usuarios WHERE email = $1", [req.params.email],
-      (err, result) => {
-        if (err) {
-          return console.error("Erro ao executar a qry de SELECT email", err);
-        }
-        res.send(result.rows);
-      }
-    );
-  } catch (error) {
-    console.log(error);
-  }
-});
+  console.log("Rota: usuarios/" + req.params.email);
+  const start = Date.now();
 
-app.delete("/usuarios/:id", (req, res) => {
-  try {
-    console.log("Rota: delete/" + req.params.id);
-    client.query(
-      "DELETE FROM Usuarios WHERE id = $1", [req.params.id], (err, result) => {
-        if (err) {
-          return console.error("Erro ao executar a qry de DELETE", err);
-        } else {
-          if (result.rowCount == 0) {
-            res.status(404).json({ info: "Registro não encontrado." });
-          } else {
-            res.status(200).json({ info: `Registro excluído. Código: ${req.params.id}` });
-          }
-        }
-      }
-    );
-  } catch (error) {
-    console.log(error);
-  }
-});
+  client.query("SELECT * FROM Usuarios WHERE email = $1", [req.params.email], (err, result) => {
+    const duration = Date.now() - start;
+    console.log("Query executada em:", duration, "ms");
 
-app.post("/usuarios", (req, res) => {
-  try {
-    console.log("Alguém enviou um post com os dados:", req.body);
-    const { nome, email, telefone } = req.body;
-    client.query(
-      "INSERT INTO Usuarios (nome, email, telefone) VALUES ($1, $2, $3) RETURNING * ", [nome, email, telefone],
-      (err, result) => {
-        if (err) {
-          return console.error("Erro ao executar a qry de INSERT", err);
-        }
-        res.status(201).json(result.rows[0]);
-      }
-    );
-  } catch (erro) {
-    console.error(erro);
-  }
-});
-
-app.put("/usuarios/:id", (req, res) => {
-  try {
-    console.log("Alguém enviou um update com os dados:", req.body);
-    const id = req.params.id;
-    const { nome, email, telefone } = req.body;
-    client.query(
-      "UPDATE Usuarios SET nome=$1, email=$2, telefone=$3 WHERE id =$4 ",
-      [nome, email, telefone, id],
-      (err, result) => {
-        if (err) {
-          return console.error("Erro ao executar a qry de UPDATE", err);
-        } else {
-          res.setHeader("id", id);
-          res.status(202).json({ "identificador": id });
-        }
-      }
-    );
-  } catch (erro) {
-    console.error(erro);
-  }
+    if (err) {
+      console.error("Erro ao executar a query de SELECT email", err);
+      res.status(500).send("Erro no servidor");
+    } else {
+      res.send(result.rows);
+    }
+  });
 });
 
 app.listen(config.port, () =>
