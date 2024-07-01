@@ -1,81 +1,113 @@
-// Adiciona a dependência express-validator para validações
-const { body, validationResult } = require('express-validator');
+const express = require("express");
+const { Client } = require("pg");
+const cors = require("cors");
+const bodyParser = require("body-parser");
+const config = require("./config");
 
-// Rota para verificar se o usuário está ativo
-app.get("/usuarios/verify", (req, res) => {
-  const email = req.query.email;
-  client.query("SELECT * FROM Usuarios WHERE email = $1", [email], (err, result) => {
+const app = express();
+
+app.use(express.json());
+app.use(cors());
+app.use(bodyParser.json());
+
+const client = new Client({
+  connectionString: config.urlConnection,
+  ssl: {
+    rejectUnauthorized: false
+  }
+});
+
+client.connect(err => {
+  if (err) {
+    return console.error('Não foi possível conectar ao banco.', err);
+  }
+  console.log('Conectado ao banco de dados.');
+});
+
+// Rota de verificação
+app.get("/", (req, res) => {
+  res.send("Ok – Servidor disponível.");
+});
+
+// Listar todos os usuários
+app.get("/usuarios", (req, res) => {
+  client.query("SELECT * FROM Usuarios", (err, result) => {
     if (err) {
-      return res.status(500).json({ error: 'Erro ao verificar usuário' });
+      console.error("Erro ao executar a query de SELECT", err);
+      return res.status(500).json({ error: "Erro ao buscar usuários" });
     }
-    if (result.rows.length > 0) {
-      res.json({ status: 'ativo' });
-    } else {
-      res.json({ status: 'inativo' });
-    }
+    res.json(result.rows);
   });
 });
 
-// Rota para cadastrar novo usuário com validação
-app.post("/usuarios", [
-  body('nome').notEmpty().withMessage('Nome é obrigatório'),
-  body('email').isEmail().withMessage('Email inválido'),
-  body('telefone').notEmpty().withMessage('Telefone é obrigatório')
-], (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
+// Obter um usuário por ID
+app.get("/usuarios/:id", (req, res) => {
+  const id = req.params.id;
+  client.query("SELECT * FROM Usuarios WHERE id = $1", [id], (err, result) => {
+    if (err) {
+      console.error("Erro ao executar a query de SELECT por ID", err);
+      return res.status(500).json({ error: "Erro ao buscar usuário" });
+    }
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+    res.json(result.rows[0]);
+  });
+});
 
-  const { nome, email, telefone } = req.body;
+// Adicionar um novo usuário
+app.post("/usuarios", (req, res) => {
+  const { name, email, phone } = req.body;
   client.query(
-    "INSERT INTO Usuarios (nome, email, telefone) VALUES ($1, $2, $3) RETURNING *",
-    [nome, email, telefone],
+    "INSERT INTO Usuarios (name, email, phone) VALUES ($1, $2, $3) RETURNING *",
+    [name, email, phone],
     (err, result) => {
       if (err) {
-        return res.status(500).json({ error: 'Erro ao cadastrar usuário' });
+        console.error("Erro ao executar a query de INSERT", err);
+        return res.status(500).json({ error: "Erro ao adicionar usuário" });
       }
       res.status(201).json(result.rows[0]);
     }
   );
 });
 
-// Rota para editar usuário
-app.put("/usuarios/:id", [
-  body('nome').notEmpty().withMessage('Nome é obrigatório'),
-  body('email').isEmail().withMessage('Email inválido'),
-  body('telefone').notEmpty().withMessage('Telefone é obrigatório')
-], (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
-  const { id } = req.params;
-  const { nome, email, telefone } = req.body;
+// Atualizar um usuário
+app.put("/usuarios/:id", (req, res) => {
+  const id = req.params.id;
+  const { name, email, phone } = req.body;
   client.query(
-    "UPDATE Usuarios SET nome=$1, email=$2, telefone=$3 WHERE id=$4 RETURNING *",
-    [nome, email, telefone, id],
+    "UPDATE Usuarios SET name = $1, email = $2, phone = $3 WHERE id = $4 RETURNING *",
+    [name, email, phone, id],
     (err, result) => {
       if (err) {
-        return res.status(500).json({ error: 'Erro ao atualizar usuário' });
+        console.error("Erro ao executar a query de UPDATE", err);
+        return res.status(500).json({ error: "Erro ao atualizar usuário" });
       }
-      res.status(200).json(result.rows[0]);
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: "Usuário não encontrado" });
+      }
+      res.json(result.rows[0]);
     }
   );
 });
 
-// Rota para excluir usuário
+// Excluir um usuário
 app.delete("/usuarios/:id", (req, res) => {
-  const { id } = req.params;
-  client.query("DELETE FROM Usuarios WHERE id=$1 RETURNING *", [id], (err, result) => {
+  const id = req.params.id;
+  client.query("DELETE FROM Usuarios WHERE id = $1 RETURNING *", [id], (err, result) => {
     if (err) {
-      return res.status(500).json({ error: 'Erro ao excluir usuário' });
+      console.error("Erro ao executar a query de DELETE", err);
+      return res.status(500).json({ error: "Erro ao excluir usuário" });
     }
     if (result.rowCount === 0) {
-      res.status(404).json({ error: 'Usuário não encontrado' });
-    } else {
-      res.status(200).json(result.rows[0]);
+      return res.status(404).json({ error: "Usuário não encontrado" });
     }
+    res.status(200).json({ message: `Usuário com ID ${id} excluído com sucesso.` });
   });
 });
+
+app.listen(config.port, () => {
+  console.log(`Servidor funcionando na porta ${config.port}`);
+});
+
+module.exports = app;
